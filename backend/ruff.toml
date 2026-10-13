@@ -1,0 +1,3 @@
+# Stable lint baseline: the rule set this codebase has always enforced.
+# (Newer ruff releases widen the defaults; pin them so CI stays deterministic.)
+lint.select = ["E4", "E7", "E9", "F"]

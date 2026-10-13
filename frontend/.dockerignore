@@ -1,0 +1,15 @@
+# Build artifacts
+.next/
+node_modules/
+out/
+build/
+
+# Logs and caches
+*.log
+npm-debug.log*
+*.tsbuildinfo
+
+# Local env (compose passes env vars directly)
+.env
+.env.*
+!.env.example

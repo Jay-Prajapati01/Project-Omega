@@ -1,0 +1,16 @@
+sentence-transformers>=3.4,<6
+transformers>=4.51,<5
+faster-whisper==1.1.0
+docling>=2.0,<3
+yt-dlp>=2025.2.19
+youtube-transcript-api>=1.0,<2
+instaloader==4.14
+playwright>=1.40,<2
+crawl4ai>=0.9,<1
+pymupdf==1.25.1
+pytesseract==0.3.13
+Pillow==11.0.0
+python-docx==1.1.2
+python-pptx==1.0.2
+openpyxl==3.1.5
+markdown-it-py==3.0.0

@@ -1,0 +1,7 @@
+# Copy these entries into untracked local.properties.
+# Android Emulator: use 10.0.2.2 to reach the development computer's localhost.
+# Physical USB-connected phone: run `adb reverse tcp:8000 tcp:8000`, then use 127.0.0.1.
+# Physical phone on Wi-Fi: use the computer's reachable LAN HTTPS URL instead.
+MINDMESH_API_BASE_URL=http://10.0.2.2:8000/api/
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_PUBLISHABLE_KEY=your-public-anon-or-publishable-key

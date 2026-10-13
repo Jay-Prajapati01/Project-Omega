@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1 WORKER_PROCESS=true HF_HOME=/home/appuser/.cache/huggingface TOKENIZERS_PARALLELISM=false
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg tesseract-ocr libgl1 libglib2.0-0 libgomp1 && rm -rf /var/lib/apt/lists/*
+COPY requirements-api.txt requirements-worker.txt ./
+RUN pip install --no-cache-dir torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir -r requirements-api.txt -r requirements-worker.txt
+RUN playwright install --with-deps chromium
+RUN useradd --create-home --uid 1001 appuser && mkdir -p /app/data && chown appuser /app/data
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+RUN playwright install chromium && chmod -R a+rX /opt/playwright
+COPY app ./app
+USER appuser
+CMD ["python", "-m", "app.worker"]
