@@ -1,17 +1,17 @@
 """Provision the first MindMesh administrator and initial test promos.
 
-This script is intentionally local-only. It creates the requested Supabase
-Auth user, gives that user an administrative role in the commerce schema, and
-writes the password and generated promo codes to an ignored Markdown file.
+This script is an explicit, local operator tool. Set OWNER_EMAIL to an address
+you control. A new account receives a generated one-time password; an existing
+account is never reset. Generated credentials are written to an ignored file.
 
 Run only after the commerce migration has been applied::
 
     python scripts/apply_supabase_migrations.py
     python scripts/provision_admin_test_access.py
 
-It requires SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and a working
-SUPABASE_DB_URL in backend/.env. No credential or raw promo code is stored in
-source control or in the database; the database stores an HMAC of each code.
+It requires OWNER_EMAIL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and a working
+SUPABASE_DB_URL. Set CREATE_INITIAL_PROMOS=true only when you intentionally
+want the two sample launch campaigns. This script is not part of AWS startup.
 """
 from __future__ import annotations
 
@@ -30,8 +30,6 @@ ROOT = Path(__file__).resolve().parents[2]
 BACKEND = ROOT / "backend"
 ENV_FILE = BACKEND / ".env"
 OUTPUT = ROOT / "admin-portal-test-credentials.md"
-ADMIN_EMAIL = "admin@mindmesh.com"
-ADMIN_PASSWORD = "admin@theRate1234"
 
 
 def load_environment() -> dict[str, str]:
@@ -73,19 +71,18 @@ def random_code(label: str) -> str:
     return f"MM-{label}-{secrets.token_urlsafe(12).upper().replace('-', '').replace('_', '')}"
 
 
-def auth_user_id(conn: psycopg.Connection, base_url: str, service_key: str) -> str:
-    existing = conn.execute("select id::text from auth.users where lower(email)=lower(%s)", (ADMIN_EMAIL,)).fetchone()
-    headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}", "Content-Type": "application/json"}
+def auth_user_id(conn: psycopg.Connection, base_url: str, service_key: str, email: str) -> tuple[str, str | None]:
+    existing = conn.execute("select id::text from auth.users where lower(email)=lower(%s)", (email,)).fetchone()
     if existing:
-        response = httpx.put(f"{base_url.rstrip('/')}/auth/v1/admin/users/{existing[0]}", headers=headers, json={"password": ADMIN_PASSWORD, "email_confirm": True}, timeout=20)
-        response.raise_for_status()
-        return existing[0]
-    response = httpx.post(f"{base_url.rstrip('/')}/auth/v1/admin/users", headers=headers, json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD, "email_confirm": True}, timeout=20)
+        return existing[0], None
+    initial_password = secrets.token_urlsafe(32)
+    headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}", "Content-Type": "application/json"}
+    response = httpx.post(f"{base_url.rstrip('/')}/auth/v1/admin/users", headers=headers, json={"email": email, "password": initial_password, "email_confirm": True}, timeout=20)
     response.raise_for_status()
     user_id = response.json().get("id")
     if not user_id:
         raise RuntimeError("Supabase did not return the new administrator user id")
-    return str(user_id)
+    return str(user_id), initial_password
 
 
 def table_exists(conn: psycopg.Connection, table: str) -> bool:
@@ -102,7 +99,25 @@ def add_promo(conn: psycopg.Connection, code: str, pepper: str, *, campaign: str
     )
 
 
-def write_credentials(*, role: str, admin_code: str, beta_code: str) -> None:
+def write_credentials(*, email: str, initial_password: str | None, role: str, admin_code: str | None, beta_code: str | None) -> None:
+    password_note = (
+        f"- Initial password: `{initial_password}` (change it after first sign-in)"
+        if initial_password
+        else "- This account already existed; its password was not changed or recorded."
+    )
+    promo_section = (
+        f"""## Initial promo campaigns
+
+| Audience | Code | Access | Redemption limit |
+| --- | --- | --- | --- |
+| Founder administrator | `{admin_code}` | Pro plan for 365 days | 1 account |
+| Beta testers | `{beta_code}` | Pro plan for 30 days | 100 accounts |
+
+Promo codes grant only temporary plan access; they never grant administrator rights.
+"""
+        if admin_code and beta_code
+        else "No promo codes were created."
+    )
     OUTPUT.write_text(
         f"""# MindMesh administrator test access
 
@@ -111,24 +126,15 @@ This file is ignored by Git because it contains credentials and raw promo codes.
 
 ## Administrator portal
 
-- Email: `{ADMIN_EMAIL}`
-- Password: `{ADMIN_PASSWORD}`
+- Email: `{email}`
+{password_note}
 - Assigned role: `{role}`
 - Portal: `/admin/promo-codes`
 
-Use this account to sign in first, then open the portal. The role is assigned
-in Supabase and is not granted by any promo code.
+Use this account to sign in, then open the portal. The role is assigned in
+Supabase and is not granted by any promo code.
 
-## Initial promo campaigns
-
-| Audience | Code | Access | Redemption limit |
-| --- | --- | --- | --- |
-| Founder administrator | `{admin_code}` | Pro plan for 365 days | 1 account |
-| Beta testers | `{beta_code}` | Pro plan for 30 days | 100 accounts |
-
-Promo codes grant only the displayed temporary plan access. They never grant
-administrator rights. Create, pause, or revoke later campaigns from the admin
-portal after signing in with the administrator account.
+{promo_section}
 """,
         encoding="utf-8",
     )
@@ -139,22 +145,29 @@ def main() -> int:
     db_url = require(values, "SUPABASE_DB_URL")
     base_url = require(values, "SUPABASE_URL")
     service_key = require(values, "SUPABASE_SERVICE_ROLE_KEY")
-    pepper = ensure_pepper(values)
+    admin_email = require(values, "OWNER_EMAIL")
+    create_promos = values.get("CREATE_INITIAL_PROMOS", "false").strip().lower() == "true"
+    pepper = ensure_pepper(values) if create_promos else ""
     with psycopg.connect(db_url, connect_timeout=15) as conn:
-        missing = [name for name in ("mm_profiles", "mm_user_roles", "mm_subscriptions", "mm_promo_codes") if not table_exists(conn, name)]
+        needed_tables = ["mm_profiles", "mm_user_roles", "mm_subscriptions"]
+        if create_promos:
+            needed_tables.append("mm_promo_codes")
+        missing = [name for name in needed_tables if not table_exists(conn, name)]
         if missing:
             raise RuntimeError("Commerce migration is not applied. Missing tables: " + ", ".join(missing))
-        admin_id = auth_user_id(conn, base_url, service_key)
+        admin_id, initial_password = auth_user_id(conn, base_url, service_key, admin_email)
         conn.execute("insert into public.mm_profiles(user_id) values(%s) on conflict(user_id) do nothing", (admin_id,))
         conn.execute("insert into public.mm_subscriptions(user_id,base_plan) values(%s,'pro') on conflict(user_id) do update set base_plan='pro', updated_at=now()", (admin_id,))
         owner_exists = conn.execute("select 1 from public.mm_user_roles where role='owner' and revoked_at is null").fetchone() is not None
         role = "admin" if owner_exists else "owner"
         conn.execute("insert into public.mm_user_roles(user_id,role,granted_by) values(%s,%s,%s) on conflict(user_id,role) do update set revoked_at=null", (admin_id, role, admin_id))
-        admin_code, beta_code = random_code("FOUNDER"), random_code("BETA")
-        add_promo(conn, admin_code, pepper, campaign="Founder Pro access", kind="plan_grant", hours=8760, cap=1, created_by=admin_id)
-        add_promo(conn, beta_code, pepper, campaign="Beta tester Pro access", kind="beta_grant", hours=720, cap=100, created_by=admin_id)
+        admin_code = beta_code = None
+        if create_promos:
+            admin_code, beta_code = random_code("FOUNDER"), random_code("BETA")
+            add_promo(conn, admin_code, pepper, campaign="Founder Pro access", kind="plan_grant", hours=8760, cap=1, created_by=admin_id)
+            add_promo(conn, beta_code, pepper, campaign="Beta tester Pro access", kind="beta_grant", hours=720, cap=100, created_by=admin_id)
         conn.commit()
-    write_credentials(role=role, admin_code=admin_code, beta_code=beta_code)
+    write_credentials(email=admin_email, initial_password=initial_password, role=role, admin_code=admin_code, beta_code=beta_code)
     print(f"Provisioned administrator and promo campaigns. Read {OUTPUT}")
     return 0
 

@@ -57,7 +57,12 @@ def enqueue(job_id: str) -> str:
             "httpRequest": {
                 "httpMethod": "POST",
                 "url": settings.cloud_tasks_dispatcher_url.rstrip("/") + f"/dispatch/{job_id}",
-                "oidcToken": {"serviceAccountEmail": settings.cloud_tasks_service_account},
+                "oidcToken": {
+                    "serviceAccountEmail": settings.cloud_tasks_service_account,
+                    # Cloud Run validates the service URL as the token audience;
+                    # the task target itself includes a per-job path.
+                    "audience": settings.cloud_tasks_dispatcher_url.rstrip("/"),
+                },
                 "headers": {"X-Dispatch-Secret": settings.cloud_tasks_dispatch_secret},
             }
         }

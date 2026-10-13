@@ -49,8 +49,13 @@ def _delegate(name: str, *args, **kwargs):
 
 @lru_cache
 def client() -> Redis:
-    return Redis.from_url(get_settings().redis_url, decode_responses=True,
-                          socket_timeout=15, socket_connect_timeout=10)
+    settings = get_settings()
+    options = {"decode_responses": True, "socket_timeout": 15, "socket_connect_timeout": 10}
+    if settings.redis_password:
+        options["password"] = settings.redis_password
+    if settings.redis_ssl_ca_certs:
+        options["ssl_ca_certs"] = settings.redis_ssl_ca_certs
+    return Redis.from_url(settings.redis_url, **options)
 
 
 def key(job_id: str) -> str:

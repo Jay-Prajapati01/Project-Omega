@@ -40,6 +40,22 @@ tmp/
 *.apk
 *.aab
 
+# Terraform state, local provider cache, plans, and real environment inputs
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+terraform.tfvars.json
+crash.log
+override.tf
+override.tf.json
+admin-portal-test-credentials.md
+admin-portal-credentials.md
+infra/aws/backend.tf
+infra/gcp/backend.tf
+gha-creds-*.json
+
 # Android / Gradle
 .gradle/
 build/

@@ -10,8 +10,10 @@
 - [Admin analytics setup](admin-analytics-launch.md) — consent-based metrics, local/cloud storage, and launch setup.
 - [Android companion](companion.md) — app behavior and YouTube/Instagram-only link handling.
 - [Manual setup checklist](manual-setup.md) — Supabase/Google sign-in, local services, and USB phone testing.
-- [Production security](production-security.md) — rate limits, quotas, provider protections, AWS WAF, and monitoring.
+- [Production security](production-security.md) — rate limits, quotas, provider protections, AWS WAF, Cloud Armor, and monitoring.
 - [Scaling readiness](scaling-readiness.md) — database/index status, safe caching, load-test sequence, and host capacity checks.
+- [AWS deployment](aws-deployment.md) — ECS/Fargate, ALB/WAF, Redis, secrets, GitHub OIDC, and launch prerequisites.
+- [Google Cloud deployment](gcp-deployment.md) — Cloud Run, Cloud Tasks, Cloud Run Jobs, Memorystore, Cloud Armor, GitHub WIF, and launch prerequisites.
 - [Website launch checklist](website-launch-checklist.md) — SEO, consent-gated analytics, privacy, and launch verification.
 - [Pipelines and tools](pipelines-and-tools.md) — shared processing stages, dependencies, and runtime boundaries.
 - [Known issues and fixes](known-issues-and-fixes.md) — observed UI, retrieval, graph, and companion problems and their current resolutions.

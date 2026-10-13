@@ -1,0 +1,8 @@
+# Create this private, versioned Cloud Storage bucket in the console first.
+# Copy this file to backend.tf, replace the bucket, then run terraform init.
+terraform {
+  backend "gcs" {
+    bucket = "replace-with-private-terraform-state-bucket"
+    prefix = "mindmesh/production/gcp"
+  }
+}

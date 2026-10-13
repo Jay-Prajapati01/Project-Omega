@@ -23,7 +23,8 @@ export default function StoredPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["sources", filter, page],
     queryFn: () => listSources(filter || undefined, page, pageSize),
-    refetchInterval: 5000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   });
 

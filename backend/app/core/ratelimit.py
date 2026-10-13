@@ -47,7 +47,13 @@ def _redis():
         try:
             from redis import Redis
 
-            _REDIS = Redis.from_url(url, decode_responses=True, socket_timeout=2, socket_connect_timeout=2)
+            settings = get_settings()
+            options = {"decode_responses": True, "socket_timeout": 2, "socket_connect_timeout": 2}
+            if settings.redis_password:
+                options["password"] = settings.redis_password
+            if settings.redis_ssl_ca_certs:
+                options["ssl_ca_certs"] = settings.redis_ssl_ca_certs
+            _REDIS = Redis.from_url(url, **options)
         except Exception as exc:  # noqa: BLE001
             if get_settings().environment == "production":
                 logger.error("Could not initialize shared rate limiter (%s)", type(exc).__name__)
@@ -136,9 +142,12 @@ def _client_ip(request: Request) -> str:
     if get_settings().trust_proxy:
         forwarded = request.headers.get("x-forwarded-for", "")
         if forwarded:
-            # Proxies append the address they observed; the leftmost entry is
-            # client-controlled and can be spoofed by sending X-Forwarded-For.
-            return forwarded.split(",")[-1].strip() or "unknown"
+            # Only trust a proxy-added element; never use the caller-controlled
+            # leftmost value. AWS ALB uses the last item, while GCP's global
+            # external Application Load Balancer adds client IP then LB IP.
+            values = [value.strip() for value in forwarded.split(",") if value.strip()]
+            index = -2 if get_settings().trust_proxy_xff_index == "second-last" else -1
+            return (values[index] if len(values) >= abs(index) else values[-1]) if values else "unknown"
     return request.client.host if request.client else "unknown"
 
 

@@ -29,9 +29,10 @@ spending limits and alerts as well; token-level accounting needs provider usage
 data to be captured and persisted before it can be enforced reliably.
 
 `TRUST_PROXY=true` is only safe when the API is reachable exclusively through
-your trusted load balancer or reverse proxy. The API uses the last
-`X-Forwarded-For` entry as the address appended by that proxy. Never expose the
-container directly while trusting forwarded headers.
+your trusted load balancer or reverse proxy. AWS uses the last
+`X-Forwarded-For` entry; GCP's global external Application Load Balancer uses
+the second-last entry (the client IP it appends before its own address). Never
+expose the container directly while trusting forwarded headers.
 
 ## PostgreSQL connection budget
 
@@ -72,6 +73,17 @@ Use CloudWatch alarms for sustained 429/503 rates, repeated 401/403 responses,
 job enqueue spikes, worker failures, upload volume, and provider spend. Keep
 request IDs in logs, but do not log bearer tokens, uploaded content, contact
 form bodies, or API secrets.
+
+## Google Cloud edge and monitoring
+
+The separate GCP path uses Cloud Armor on the global HTTPS load balancer for
+per-IP throttling and common SQL injection filtering, while the API's shared
+Redis limiter continues to apply per-user/tenant quotas across Cloud Run
+instances. Keep the Cloud Run API reachable only through the load balancer,
+configure Cloud Monitoring uptime checks and alerts, and review Cloud Logging,
+Cloud Tasks retries, Cloud Run Job failures, and provider spend. The GCP
+configuration trusts the second-last forwarded IP added by Google's load
+balancer; do not expose the Cloud Run service URL directly.
 
 The API exposes low-cardinality Prometheus metrics at `/api/metrics`; restrict
 that path to your monitoring system or an authenticated internal network. The

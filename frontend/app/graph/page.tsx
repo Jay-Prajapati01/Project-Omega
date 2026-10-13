@@ -396,8 +396,8 @@ function OrbitCanvas({ graph, sources, isFetching, refetch }: { graph: GraphData
 }
 
 function KnowledgeGraphPage() {
-  const graphQuery = useQuery({ queryKey: ["knowledge-graph"], queryFn: getGraph, staleTime: 5_000, refetchInterval: 10_000, refetchIntervalInBackground: false });
-  const sourcesQuery = useQuery({ queryKey: ["knowledge-graph-sources"], queryFn: () => listSources(undefined, 1, 100), staleTime: 5_000, refetchInterval: 10_000, refetchIntervalInBackground: false });
+  const graphQuery = useQuery({ queryKey: ["knowledge-graph"], queryFn: getGraph, staleTime: 30_000, refetchInterval: 30_000, refetchIntervalInBackground: false });
+  const sourcesQuery = useQuery({ queryKey: ["knowledge-graph-sources"], queryFn: () => listSources(undefined, 1, 100), staleTime: 30_000, refetchInterval: 30_000, refetchIntervalInBackground: false });
   const isLoading = graphQuery.isLoading || sourcesQuery.isLoading;
   const isError = graphQuery.isError || sourcesQuery.isError;
   const error = graphQuery.error || sourcesQuery.error;

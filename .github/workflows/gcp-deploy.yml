@@ -1,0 +1,126 @@
+name: Build and deploy MindMesh to Google Cloud
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Roll out the pushed SHA images to Cloud Run services and the worker Job."
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: mindmesh-gcp-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate public build settings
+        shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          GCP_ARTIFACT_REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY }}
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_DEPLOY_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          WEB_DOMAIN: ${{ vars.WEB_DOMAIN }}
+          API_DOMAIN: ${{ vars.API_DOMAIN }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+          PRIVACY_BUSINESS_NAME: ${{ vars.PRIVACY_BUSINESS_NAME }}
+          PRIVACY_CONTACT_EMAIL: ${{ vars.PRIVACY_CONTACT_EMAIL }}
+        run: |
+          set -euo pipefail
+          for key in GCP_PROJECT_ID GCP_REGION GCP_ARTIFACT_REPOSITORY GCP_WORKLOAD_IDENTITY_PROVIDER GCP_DEPLOY_SERVICE_ACCOUNT WEB_DOMAIN API_DOMAIN SUPABASE_URL SUPABASE_PUBLISHABLE_KEY PRIVACY_BUSINESS_NAME PRIVACY_CONTACT_EMAIL; do
+            if [[ -z "${!key}" ]]; then echo "Missing GitHub Actions variable: $key" >&2; exit 1; fi
+          done
+          [[ "$WEB_DOMAIN" != "$API_DOMAIN" ]] || { echo "WEB_DOMAIN and API_DOMAIN must be different hostnames" >&2; exit 1; }
+          [[ "$SUPABASE_URL" == https://* ]] || { echo "SUPABASE_URL must use HTTPS" >&2; exit 1; }
+          [[ "$GCP_ARTIFACT_REPOSITORY" == "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/mindmesh" ]] || { echo "GCP_ARTIFACT_REPOSITORY must be the Terraform output for this project and region" >&2; exit 1; }
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Configure Artifact Registry Docker authentication
+        run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.cloud
+          push: true
+          tags: |
+            ${{ vars.GCP_ARTIFACT_REPOSITORY }}/api:prod
+            ${{ vars.GCP_ARTIFACT_REPOSITORY }}/api:${{ github.sha }}
+          cache-from: type=gha,scope=gcp-api
+          cache-to: type=gha,mode=max,scope=gcp-api
+
+      - name: Build and push worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.worker
+          push: true
+          tags: |
+            ${{ vars.GCP_ARTIFACT_REPOSITORY }}/worker:prod
+            ${{ vars.GCP_ARTIFACT_REPOSITORY }}/worker:${{ github.sha }}
+          cache-from: type=gha,scope=gcp-worker
+          cache-to: type=gha,mode=max,scope=gcp-worker
+
+      - name: Build and push website image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile.prod
+          push: true
+          tags: |
+            ${{ vars.GCP_ARTIFACT_REPOSITORY }}/web:prod
+            ${{ vars.GCP_ARTIFACT_REPOSITORY }}/web:${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_EXECUTION_MODE=cloud
+            NEXT_PUBLIC_API_URL=https://${{ vars.API_DOMAIN }}/api
+            NEXT_PUBLIC_SUPABASE_URL=${{ vars.SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_SITE_URL=https://${{ vars.WEB_DOMAIN }}
+            NEXT_PUBLIC_GA_MEASUREMENT_ID=${{ vars.GA_MEASUREMENT_ID }}
+            NEXT_PUBLIC_PRIVACY_BUSINESS_NAME=${{ vars.PRIVACY_BUSINESS_NAME }}
+            NEXT_PUBLIC_PRIVACY_CONTACT_EMAIL=${{ vars.PRIVACY_CONTACT_EMAIL }}
+          cache-from: type=gha,scope=gcp-web
+          cache-to: type=gha,mode=max,scope=gcp-web
+
+      - name: Roll out immutable commit images
+        if: ${{ inputs.deploy }}
+        shell: bash
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: ${{ vars.GCP_REGION }}
+          REGISTRY: ${{ vars.GCP_ARTIFACT_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for service in mindmesh-api mindmesh-web mindmesh-dispatcher; do
+            component="${service#mindmesh-}"
+            if [[ "$component" == "dispatcher" ]]; then component="api"; fi
+            image="${REGISTRY}/${component}:${IMAGE_TAG}"
+            gcloud run services update "$service" --project "$PROJECT_ID" --region "$REGION" --image "$image" --quiet
+          done
+          gcloud run jobs update mindmesh-worker --project "$PROJECT_ID" --region "$REGION" --image "${REGISTRY}/worker:${IMAGE_TAG}" --quiet

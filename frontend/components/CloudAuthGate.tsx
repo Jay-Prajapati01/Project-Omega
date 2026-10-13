@@ -2,7 +2,6 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -22,16 +21,6 @@ export function CloudAuthGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
   const isPublic = PUBLIC_ROUTES.includes(pathname);
-
-  const meta = (session?.user.user_metadata ?? {}) as Record<string, unknown>;
-  const rawName =
-    (typeof meta.preferred_name === "string" && meta.preferred_name.trim()) ||
-    (typeof meta.full_name === "string" && meta.full_name.trim()) ||
-    session?.user.email?.split("@")[0] ||
-    "Your profile";
-  const displayName = rawName.trim();
-  const initials =
-    displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "M";
 
   useEffect(() => {
     try {
@@ -72,27 +61,6 @@ export function CloudAuthGate({ children }: { children: React.ReactNode }) {
     ) : (
       <div key={session.user.id}>
         <NotificationBridge />
-        <div className="flex items-center justify-end gap-3 border-b border-ink/10 bg-card px-4 py-2 text-sm">
-          <Link
-            href="/profile"
-            title="Open your profile"
-            className="flex max-w-[min(100%,22rem)] items-center gap-3 rounded-2xl border-2 border-ink bg-surface px-2.5 py-1.5 transition-colors hover:bg-paper-card"
-          >
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border-2 border-ink bg-orange text-[11px] font-extrabold text-ink">
-              {initials}
-            </span>
-            <span className="min-w-0 text-left leading-tight">
-              <span className="block truncate text-sm font-extrabold text-foreground">{displayName}</span>
-              <span className="block truncate text-xs text-muted">{session.user.email}</span>
-            </span>
-          </Link>
-          <button className="font-bold underline" onClick={async () => {
-            const { error: signOutError } = await getSupabase().auth.signOut();
-            if (signOutError) setError("Unable to sign out. Please try again.");
-            else router.replace("/login");
-          }}>Sign out</button>
-          {error && <span role="alert">{error}</span>}
-        </div>
         {children}
       </div>
     )}

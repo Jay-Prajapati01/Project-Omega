@@ -86,6 +86,7 @@ export default function DashboardPage() {
     queryKey: ["stats"],
     queryFn: getStats,
     refetchInterval: 30000,
+    refetchIntervalInBackground: false,
   });
 
   const theme = useAppStore((s) => s.settings.theme);

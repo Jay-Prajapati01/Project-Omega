@@ -103,11 +103,6 @@ async def _stage_file_spooled(kind: str, filename: str, suffix: str, file) -> tu
 async def enqueue_payload(kind: str, incoming: dict, idempotency: str = "") -> dict:
     """Validate and enqueue a JSON job for another authenticated facade."""
     module, _, schema = HANDLERS[kind]
-    from app.services.commerce import reserve
-    feature = {"videos": "youtube", "instagram": "instagram", "pdf": "pdf", "documents": "documents", "audio": "audio", "web": "web", "search": "search", "chat": "chat"}.get(kind)
-    if feature:
-        reserve(feature, idempotency)
-    staged_object: str | None = None
     if schema is None:
         raise HTTPException(400, "This endpoint accepts URLs only")
     api = importlib.import_module("app.api." + module)
@@ -125,14 +120,6 @@ async def enqueue_payload(kind: str, incoming: dict, idempotency: str = "") -> d
         job = await asyncio.to_thread(jobs.create, kind, payload, resource, idempotency)
     except jobs.QuotaExceeded as exc:
         raise HTTPException(429, str(exc), headers={"Retry-After": "86400"}) from None
-    except Exception:
-        # Never leave an orphaned staged object behind when enqueue fails.
-        if staged_object:
-            try:
-                await asyncio.to_thread(cloud_storage.delete, staged_object)
-            except Exception as cleanup_exc:  # noqa: BLE001
-                logger.warning("staged object cleanup failed object=%s err=%s", staged_object, cleanup_exc)
-        raise
     if get_settings().job_backend == "gcp":
         # Schedule authenticated dispatch; never fails the request — when
         # Cloud Tasks is unreachable the row stays queued for poll-mode.

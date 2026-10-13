@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     supabase_db_pool_timeout_seconds: float = 10
     supabase_storage_bucket: str = "mindmesh-private"
     redis_url: str = ""
+    redis_password: str = ""
+    redis_ssl_ca_certs: str = ""
     qdrant_api_key: str = ""
     job_ttl_seconds: int = 604800
     worker_process: bool = False
@@ -100,6 +102,10 @@ class Settings(BaseSettings):
     job_result_retention_days: int = 30
     # Trust X-Forwarded-For only when behind a reverse proxy you control.
     trust_proxy: bool = False
+    # Which trusted X-Forwarded-For element contains the original client IP.
+    # AWS ALB appends the observed client as the final item; a Google global
+    # external Application Load Balancer appends client IP then LB IP.
+    trust_proxy_xff_index: str = "last"
 
     # Concurrency cap for heavy pipelines (transcription, OCR, downloads).
     max_concurrent_heavy_tasks: int = 2
@@ -222,6 +228,9 @@ class Settings(BaseSettings):
             raise ValueError("EMBEDDING_PROVIDER must be ollama or gemini")
         if self.job_backend not in {"redis", "postgres", "gcp"}:
             raise ValueError("JOB_BACKEND must be redis, postgres or gcp")
+        self.trust_proxy_xff_index = self.trust_proxy_xff_index.strip().lower()
+        if self.trust_proxy_xff_index not in {"last", "second-last"}:
+            raise ValueError("TRUST_PROXY_XFF_INDEX must be last or second-last")
         if not 1 <= self.supabase_db_pool_max_size <= 32:
             raise ValueError("SUPABASE_DB_POOL_MAX_SIZE must be between 1 and 32")
         if not 1 <= self.supabase_db_pool_timeout_seconds <= 60:

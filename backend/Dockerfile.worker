@@ -5,10 +5,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg tesserac
 COPY requirements-api.txt requirements-worker.txt ./
 RUN pip install --no-cache-dir torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements-api.txt -r requirements-worker.txt
-RUN playwright install --with-deps chromium
 RUN useradd --create-home --uid 1001 appuser && mkdir -p /app/data && chown appuser /app/data
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
-RUN playwright install chromium && chmod -R a+rX /opt/playwright
+RUN playwright install --with-deps chromium && chmod -R a+rX /opt/playwright
 COPY app ./app
 USER appuser
 CMD ["python", "-m", "app.worker"]

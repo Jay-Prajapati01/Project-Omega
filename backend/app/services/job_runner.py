@@ -1,4 +1,4 @@
-"""Run existing ingestion/API services inside a scoped Modal job."""
+"""Run existing ingestion/API services inside a scoped cloud worker job."""
 import asyncio
 import importlib
 import io
@@ -12,6 +12,10 @@ from app.services import cloud_db, cloud_storage, jobs
 HANDLERS = {
     "videos": ("videos", "process_video", "VideoProcessRequest"),
     "instagram": ("instagram", "process_instagram", "InstagramRequest"),
+    "pdf": ("pdf", "process_pdf", None),
+    "documents": ("documents", "process_document", None),
+    "audio": ("audio", "process_audio", None),
+    "web": ("web", "process_web", "WebRequest"),
     "chat": ("chat", "chat", "ChatRequest"),
     "search": ("search", "search", "SearchRequest"),
 }

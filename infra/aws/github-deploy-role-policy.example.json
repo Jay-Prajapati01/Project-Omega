@@ -1,0 +1,29 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrLogin",
+      "Effect": "Allow",
+      "Action": ["ecr:GetAuthorizationToken"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PushMindMeshImages",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:CompleteLayerUpload",
+        "ecr:InitiateLayerUpload",
+        "ecr:PutImage",
+        "ecr:UploadLayerPart"
+      ],
+      "Resource": "arn:aws:ecr:REGION:ACCOUNT_ID:repository/mindmesh/*"
+    },
+    {
+      "Sid": "RollOutExistingServices",
+      "Effect": "Allow",
+      "Action": ["ecs:UpdateService"],
+      "Resource": "arn:aws:ecs:REGION:ACCOUNT_ID:service/mindmesh-production/*"
+    }
+  ]
+}

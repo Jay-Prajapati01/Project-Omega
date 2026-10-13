@@ -95,6 +95,8 @@ See [`docs/companion.md`](docs/companion.md) and [`docs/manual-setup.md`](docs/m
 
 Start at [`docs/README.md`](docs/README.md) for the documentation index. It links the feature pipelines, graph behavior, multi-tenancy and admin access, companion setup, troubleshooting history, and launch checklist.
 
+Separate public deployment options are documented in [`docs/aws-deployment.md`](docs/aws-deployment.md) and [`docs/gcp-deployment.md`](docs/gcp-deployment.md). Their infrastructure and GitHub Actions workflows are isolated under `infra/aws` / `infra/gcp` and `.github/workflows/aws-deploy.yml` / `gcp-deploy.yml`. Cloud resources are not created automatically; review each plan and its costs before applying Terraform.
+
 ## Current boundaries
 
 - Instagram extraction supports publicly accessible content; private, removed, login-gated, region-limited, or throttled content may not be processable.

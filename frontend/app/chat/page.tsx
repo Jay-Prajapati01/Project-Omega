@@ -78,7 +78,6 @@ function ChatPageInner() {
   const { data: stats } = useQuery({
     queryKey: ["stats"],
     queryFn: getStats,
-    refetchInterval: 10000,
   });
 
   useEffect(() => {

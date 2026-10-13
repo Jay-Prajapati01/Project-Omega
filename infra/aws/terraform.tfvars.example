@@ -1,0 +1,22 @@
+aws_region          = "ap-south-1"
+environment         = "production"
+project_name        = "mindmesh"
+web_domain          = "app.example.com"
+api_domain          = "api.example.com"
+acm_certificate_arn = "arn:aws:acm:ap-south-1:123456789012:certificate/replace-me"
+qdrant_url          = "https://your-cluster.cloud.qdrant.io"
+
+# First create AWS infrastructure with `deploy_services = false`.
+# Push container images and populate the Secrets Manager JSON object before
+# setting this to true on the second Terraform apply.
+deploy_services       = false
+image_tag             = "prod"
+api_desired_count     = 2
+api_min_count         = 2
+api_max_count         = 6
+worker_desired_count  = 1
+llm_provider          = "groq"
+llm_model             = "llama-3.1-8b-instant"
+embedding_model       = "gemini-embedding-2"
+embedding_dim         = 768
+alert_email           = ""
