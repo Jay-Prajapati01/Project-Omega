@@ -52,7 +52,15 @@ class Settings(BaseSettings):
     xai_api_key: str = ""
     xai_model: str = ""
     groq_api_key: str = ""
-    groq_model: str = "llama-3.1-8b-instant"
+    groq_api_key_secondary: str = ""
+    groq_model: str = "openai/gpt-oss-20b"
+    groq_safe_rpm: int = 24
+    groq_safe_rpd: int = 800
+    groq_safe_tpm: int = 6400
+    groq_safe_tpd: int = 160000
+    groq_circuit_failure_threshold: int = 5
+    groq_circuit_open_seconds: int = 30
+    llm_usage_retention_days: int = 90
     # Commerce and BYOK secrets stay server-only. BYOK_ENCRYPTION_KEY is a
     # base64url-encoded 32-byte AES-256 key from Secret Manager; never a
     # NEXT_PUBLIC value or a checked-in development default.
@@ -222,6 +230,10 @@ class Settings(BaseSettings):
             self.max_upload_bytes_per_tenant_per_day,
         ) <= 0:
             raise ValueError("Production rate limits and daily quotas must all be greater than zero")
+        if min(self.groq_safe_rpm, self.groq_safe_rpd, self.groq_safe_tpm,
+               self.groq_safe_tpd, self.groq_circuit_failure_threshold,
+               self.groq_circuit_open_seconds, self.llm_usage_retention_days) <= 0:
+            raise ValueError("Provider safety budgets and usage retention must be greater than zero")
         if self.auth_enabled and not (self.supabase_url and self.supabase_anon_key):
             raise ValueError("Authentication requires SUPABASE_URL and SUPABASE_ANON_KEY")
         if self.embedding_provider not in {"ollama", "gemini"}:

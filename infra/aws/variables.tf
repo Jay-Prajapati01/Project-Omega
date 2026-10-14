@@ -115,7 +115,12 @@ variable "llm_provider" {
 }
 variable "llm_model" {
   type    = string
-  default = "llama-3.1-8b-instant"
+  default = "openai/gpt-oss-20b"
+}
+variable "enable_groq_secondary" {
+  type        = bool
+  default     = false
+  description = "Inject GROQ_API_KEY_SECONDARY from the backend Secrets Manager JSON when true."
 }
 variable "embedding_model" {
   type    = string

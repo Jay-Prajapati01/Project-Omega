@@ -111,11 +111,11 @@ locals {
     { name = "PAYMENTS_ENABLED", value = "false" },
     { name = "MAX_CONCURRENT_HEAVY_TASKS", value = "2" }
   ]
-  runtime_secret_names = [
+  runtime_secret_names = concat([
     "SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_DB_URL",
     "QDRANT_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "XAI_API_KEY",
     "BYOK_ENCRYPTION_KEY", "PROMO_HMAC_PEPPER", "OWNER_BOOTSTRAP_USER_ID"
-  ]
+  ], var.enable_groq_secondary ? ["GROQ_API_KEY_SECONDARY"] : [])
   backend_secrets = [for key in local.runtime_secret_names : {
     name      = key
     valueFrom = "${aws_secretsmanager_secret.backend.arn}:${key}::"

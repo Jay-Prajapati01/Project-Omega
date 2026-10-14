@@ -100,6 +100,144 @@ def hit(key: str, window: int, limit: int) -> tuple[bool, int]:
     return True, 0
 
 
+_PROVIDER_BUDGET_LUA = """
+local checks = {tonumber(ARGV[1]), tonumber(ARGV[2]), tonumber(ARGV[3]), tonumber(ARGV[4])}
+local amounts = {1, 1, tonumber(ARGV[5]), tonumber(ARGV[5])}
+local ttls = {60, 86400, 60, 86400}
+for i=1,4 do
+  local current = tonumber(redis.call('GET', KEYS[i]) or '0')
+  if current + amounts[i] > checks[i] then
+    local ttl = redis.call('TTL', KEYS[i])
+    return {0, math.max(ttl, 1), i}
+  end
+end
+for i=1,4 do
+  local value = redis.call('INCRBY', KEYS[i], amounts[i])
+  if value == amounts[i] then redis.call('EXPIRE', KEYS[i], ttls[i]) end
+end
+return {1, 0, 0}
+"""
+
+
+def reserve_provider_budget(model: str, estimated_tokens: int, cfg=None) -> tuple[bool, int]:
+    """Shared conservative rolling provider budgets (RPM/RPD/TPM/TPD)."""
+    cfg = cfg or get_settings()
+    r = _redis()
+    if r is None:
+        if cfg.environment == "production" or cfg.mindmesh_execution_mode in {"cloud", "modal"}:
+            raise RateLimitUnavailable("Shared provider budget store is not configured")
+        return True, 0
+    try:
+        keys = [f"mm:llm:budget:{model}:{window}" for window in ("minute_requests", "day_requests", "minute_tokens", "day_tokens")]
+        result = r.eval(_PROVIDER_BUDGET_LUA, len(keys), *keys,
+                        cfg.groq_safe_rpm, cfg.groq_safe_rpd, cfg.groq_safe_tpm,
+                        cfg.groq_safe_tpd, max(1, int(estimated_tokens)))
+        return bool(int(result[0])), max(1, int(result[1])) if not int(result[0]) else 0
+    except RateLimitUnavailable:
+        raise
+    except Exception as exc:
+        if cfg.environment == "production" or cfg.mindmesh_execution_mode in {"cloud", "modal"}:
+            logger.error("Provider budget unavailable; rejecting call (%s)", type(exc).__name__)
+            raise RateLimitUnavailable from exc
+        logger.warning("Provider budget unavailable (%s)", type(exc).__name__)
+        return True, 0
+
+
+def provider_cooldown(model: str, retry_after: int | None = None, cfg=None) -> None:
+    """Share a provider-wide 429 cooldown without rotating same-org keys."""
+    cfg = cfg or get_settings()
+    r = _redis()
+    if r is None:
+        return
+    r.set(f"mm:llm:cooldown:{model}", "1", ex=max(1, min(int(retry_after or 60), 86400)))
+
+
+def provider_cooldown_remaining(model: str, cfg=None) -> int:
+    cfg = cfg or get_settings()
+    r = _redis()
+    if r is None:
+        return 0
+    try:
+        ttl = r.ttl(f"mm:llm:cooldown:{model}")
+        return max(0, int(ttl or 0))
+    except Exception as exc:
+        if cfg.environment == "production" or cfg.mindmesh_execution_mode in {"cloud", "modal"}:
+            logger.error("Provider cooldown store unavailable (%s)", type(exc).__name__)
+            raise RateLimitUnavailable from exc
+        return 0
+
+
+def provider_circuit_remaining(model: str, cfg=None) -> int:
+    cfg = cfg or get_settings()
+    r = _redis()
+    if r is None:
+        return 0
+    try:
+        return max(0, int(r.ttl(f"mm:llm:circuit:{model}") or 0))
+    except Exception as exc:
+        if cfg.environment == "production" or cfg.mindmesh_execution_mode in {"cloud", "modal"}:
+            raise RateLimitUnavailable from exc
+        return 0
+
+
+def provider_failure(model: str, cfg=None) -> None:
+    cfg = cfg or get_settings()
+    r = _redis()
+    if r is None:
+        return
+    try:
+        key = f"mm:llm:failures:{model}"
+        count = r.incr(key)
+        if count == 1:
+            r.expire(key, 60)
+        if int(count) >= cfg.groq_circuit_failure_threshold:
+            r.set(f"mm:llm:circuit:{model}", "1", ex=cfg.groq_circuit_open_seconds)
+    except Exception as exc:
+        if cfg.environment == "production" or cfg.mindmesh_execution_mode in {"cloud", "modal"}:
+            raise RateLimitUnavailable from exc
+
+
+def provider_success(model: str, cfg=None) -> None:
+    cfg = cfg or get_settings()
+    r = _redis()
+    if r is None:
+        return
+    try:
+        r.delete(f"mm:llm:failures:{model}")
+        r.delete(f"mm:llm:circuit:{model}")
+    except Exception as exc:
+        if cfg.environment == "production" or cfg.mindmesh_execution_mode in {"cloud", "modal"}:
+            logger.error("Provider circuit reset failed (%s)", type(exc).__name__)
+
+
+def reconcile_provider_tokens(model: str, reserved_tokens: int, actual_tokens: int, cfg=None) -> None:
+    """Adjust active shared token windows from estimate to provider usage."""
+    cfg = cfg or get_settings()
+    r = _redis()
+    if r is None or actual_tokens < 0:
+        return
+    delta = int(actual_tokens) - int(reserved_tokens)
+    if not delta:
+        return
+    script = """
+    for i=1,2 do
+      local ttl = redis.call('TTL', KEYS[i])
+      if ttl > 0 then
+        local current = tonumber(redis.call('GET', KEYS[i]) or '0')
+        local updated = math.max(0, current + tonumber(ARGV[1]))
+        redis.call('SET', KEYS[i], updated, 'EX', ttl)
+      end
+    end
+    return 1
+    """
+    keys = [f"mm:llm:budget:{model}:minute_tokens", f"mm:llm:budget:{model}:day_tokens"]
+    try:
+        r.eval(script, 2, *keys, delta)
+    except Exception as exc:
+        if cfg.environment == "production" or cfg.mindmesh_execution_mode in {"cloud", "modal"}:
+            logger.error("Provider token reconciliation unavailable (%s)", type(exc).__name__)
+
+
 class RateLimitUnavailable(RuntimeError):
     """Raised when production cannot reach the shared rate-limit store."""
 

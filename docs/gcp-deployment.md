@@ -152,6 +152,8 @@ Cloud Tasks invokes the dispatcher using an OIDC token with the dispatcher servi
 
 ## 9. Verify launch health and keep watch
 
+Before deploying the Groq usage dashboard, apply `backend/migrations/202610140003_llm_usage_analytics.sql` to the configured Supabase/Postgres database. Set `GROQ_API_KEY` (and optional `GROQ_API_KEY_SECONDARY`) as backend Google Secret Manager values. Terraform examples select `openai/gpt-oss-20b`; confirm live Groq limits and the shared Memorystore budgets first. See [Groq production rollout](groq-production.md) for end-to-end verification and rollback steps.
+
 1. Open `https://app.example.com` and `https://api.example.com/api/health/detailed`; verify HTTPS, API/database/Redis readiness, login and password recovery, account isolation, uploads, YouTube/Instagram processing, AI chat, job status, contact form, analytics consent, privacy notice, and 404 page.
 2. Open **Cloud Run → Services**; inspect `mindmesh-api`, `mindmesh-web`, and `mindmesh-dispatcher` for healthy revisions and errors. Open **Cloud Run → Jobs → mindmesh-worker → Executions** to inspect completed/failed processing jobs.
 3. Open **Logging → Logs Explorer** and filter by the Cloud Run service name. New Google Cloud projects route application and service logs to the `_Default` bucket, which retains logs for 30 days unless you change it. Check application and load-balancer logs, 429/503 counts, failed job retries, database pool errors, and provider errors. Keep retention aligned with your actual privacy policy. [Cloud Logging storage defaults](https://docs.cloud.google.com/logging/docs/store-log-entries).

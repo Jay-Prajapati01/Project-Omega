@@ -1,6 +1,7 @@
 """RAG chat endpoint."""
 import json
 import uuid
+from datetime import datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
@@ -9,12 +10,39 @@ from fastapi.responses import StreamingResponse
 
 from app.models.schemas import ChatRequest, ChatResponse, ChatMessage, Citation, SearchHit
 from app.services import compare, llm, rag, store
+from app.services.rag import _NO_CONTEXT_ANSWER, _NO_MATCH_ANSWER
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 EMPTY_QUESTION_ANSWER = (
     "Please enter a question so I can search your knowledge base."
 )
+
+
+@router.get("/quota")
+async def ai_quota_status():
+    """Advisory AI quota status; the POST path remains authoritative."""
+    from app.core.config import get_settings
+    from app.core.tenant import scope
+    settings = get_settings()
+    limit = settings.max_ai_requests_per_tenant_per_day
+    if settings.mindmesh_execution_mode != "cloud":
+        return {"enabled": False, "used": None, "limit": None, "remaining": None, "warning_threshold": 80}
+    import time
+    from app.core.ratelimit import _redis
+    day = time.strftime("%Y%m%d")
+    key = f"mm:quota:ai_requests:{scope().tenant_id}:{day}"
+    try:
+        redis = _redis()
+        if redis is None:
+            raise RuntimeError("Redis is not configured")
+        used = int(redis.get(key) or 0)
+    except Exception:
+        raise HTTPException(503, detail={"code": "QUOTA_STATUS_UNAVAILABLE", "message": "Usage status is temporarily unavailable."}) from None
+    now = datetime.now().astimezone()
+    reset_at = (now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).isoformat()
+    return {"enabled": True, "used": used, "limit": limit, "remaining": max(limit - used, 0),
+            "warning_threshold": 80, "reset_at": reset_at}
 
 
 def _charge_ai_request() -> None:
@@ -37,8 +65,7 @@ def _charge_ai_request() -> None:
         app_metrics.inc("quota_rejected_total", kind="ai_requests")
         raise HTTPException(
             status_code=429,
-            detail={"code": "AI_DAILY_QUOTA_REACHED", "message": "Daily AI request limit reached"},
-            headers={"Retry-After": "3600"},
+            detail={"code": "USER_RATE_LIMITED", "message": "You've reached your current AI request limit. Try again after your daily quota resets."},
         )
 
 
@@ -105,6 +132,7 @@ async def chat_action(payload: ChatActionRequest) -> ChatResponse:
                 reserve("chat")
                 answer = await llm.generate(
                     prompt,
+                    task_type="ask_ai",
                     system=(
                         "You are MindMesh. Transform only the supplied grounded answer. "
                         "Do not invent or add facts. Use clean Markdown, no raw numeric citation markers, "

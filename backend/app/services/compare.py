@@ -33,7 +33,7 @@ async def compare(source_id_a: str, source_id_b: str) -> dict:
         "## Combined takeaway. Use only the given content.\n\n"
         f"SOURCE A:\n{text_a}\n\n---\n\nSOURCE B:\n{text_b}"
     )
-    analysis = await llm.generate(prompt, system=_COMPARE_SYS)
+    analysis = await llm.generate(prompt, system=_COMPARE_SYS, task_type="ask_ai")
     return {
         "analysis": analysis,
         "source_a": source_id_a,

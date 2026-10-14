@@ -8,7 +8,7 @@ from typing import AsyncIterator
 
 from app.core.config import get_settings
 from app.models.schemas import Citation, ChatMessage
-from app.services import embeddings, llm, note_search, relevance, store, vectorstore
+from app.services import llm, relevance, store, vectorstore
 
 _SUMMARY_SYS = (
     "You are a precise assistant that summarizes content. "
@@ -155,7 +155,7 @@ async def summarize(text: str) -> tuple[str, list[str]]:
         "Respond as JSON with keys 'summary' (string) and 'topics' "
         f"(array of strings).\n\nCONTENT:\n{excerpt}"
     )
-    raw = await llm.generate(prompt, system=_SUMMARY_SYS)
+    raw = await llm.generate(prompt, system=_SUMMARY_SYS, task_type="ingestion_summary")
     try:
         start, end = raw.find("{"), raw.rfind("}")
         data = json.loads(raw[start : end + 1])
@@ -180,7 +180,7 @@ async def summarize_stream(
         "Respond as JSON with keys 'summary' (string) and 'topics' "
         f"(array of strings).\n\nCONTENT:\n{excerpt}"
     )
-    async for token in llm.generate_stream(prompt, system=_SUMMARY_SYS):
+    async for token in llm.generate_stream(prompt, system=_SUMMARY_SYS, task_type="ingestion_summary"):
         yield token
 
 
@@ -270,7 +270,7 @@ async def answer(
         history_text = "\n\nCONVERSATION HISTORY:\n" + "\n".join(history_lines) + "\n"
 
     prompt = f"CONTEXT:\n{context}\n\nSOURCES:\n{sources_list}\n{history_text}\nQUESTION: {question}\n\nANSWER (cite sources using [1], [2] etc.):"
-    response = await llm.generate(prompt, system=_ANSWER_SYS)
+    response = await llm.generate(prompt, system=_ANSWER_SYS, task_type="ask_ai")
     return response, citations, metrics
 
 
@@ -315,5 +315,5 @@ async def answer_stream(
         history_text = "\n\nCONVERSATION HISTORY:\n" + "\n".join(history_lines) + "\n"
 
     prompt = f"CONTEXT:\n{context}\n\nSOURCES:\n{sources_list}\n{history_text}\nQUESTION: {question}\n\nANSWER (cite sources using [1], [2] etc.):"
-    async for token in llm.generate_stream(prompt, system=_ANSWER_SYS):
+    async for token in llm.generate_stream(prompt, system=_ANSWER_SYS, task_type="ask_ai"):
         yield token

@@ -38,7 +38,7 @@ def _init() -> None:
         _BACK = {
             "type": BackendType.GROQ,
             "key": groq_key,
-            "model": os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
+            "model": os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
             "rpm_limit": int(os.getenv("GROQ_RPM_LIMIT", "30")),
             "tpm_limit": int(os.getenv("GROQ_TPM_LIMIT", "30000")),
             "tpd_limit": int(os.getenv("GROQ_TPD_LIMIT", "500000")),

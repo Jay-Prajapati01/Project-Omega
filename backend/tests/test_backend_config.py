@@ -59,7 +59,7 @@ def test_groq_key_selects_groq_with_limits(monkeypatch):
     cfg = bc.backend()
     assert cfg["type"] is bc.BackendType.GROQ
     assert cfg["key"] == "gsk_test_123"
-    assert cfg["model"] == "llama-3.1-8b-instant"
+    assert cfg["model"] == "openai/gpt-oss-20b"
     assert cfg["rpm_limit"] == 30
     assert cfg["tpm_limit"] == 30000
     assert cfg["tpd_limit"] == 500000
@@ -185,7 +185,7 @@ async def test_generate_routes_to_groq(monkeypatch):
     assert capture["base_url"] == llm.GROQ_API_BASE
     assert capture["path"] == "/chat/completions"
     assert capture["headers"]["Authorization"] == "Bearer gsk_test_123"
-    assert capture["json"]["model"] == "llama-3.1-8b-instant"
+    assert capture["json"]["model"] == "openai/gpt-oss-20b"
     assert capture["json"]["stream"] is False
     assert capture["json"]["messages"] == [
         {"role": "system", "content": "be brief"},

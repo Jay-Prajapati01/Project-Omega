@@ -115,7 +115,8 @@ function ChatPageInner() {
     },
     onSettled: () => setPendingQuestion(""),
     onError: (err: any, failedQuestion) => {
-      setError(err?.message || "Failed to generate answer. Is the backend running?");
+      const detail = err?.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : detail?.message || err?.message || "Failed to generate answer. Is the backend running?");
       // Restore the question so the user's input is not lost on failure.
       if (typeof failedQuestion === "string" && failedQuestion.trim()) {
         setQuery(failedQuestion);
@@ -124,13 +125,21 @@ function ChatPageInner() {
   });
 
   const handleSend = useCallback(
-    (q: string) => {
+    async (q: string) => {
       if (!q.trim()) return;
       setQuery("");
       setError(null);
+      try {
+        const { data } = await api.get<{ enabled: boolean; used: number | null; limit: number | null }>("/chat/quota");
+        if (data.enabled && data.used !== null && data.limit) {
+          const percent = (data.used / data.limit) * 100;
+          if (percent >= 90) notify("You’re close to your daily AI request limit. This request may use the remaining quota.", "info");
+          else if (percent >= 80) notify("You’re approaching your daily AI request limit. Save your work and avoid repeated requests.", "info");
+        }
+      } catch { /* Preflight is advisory. The server enforces the quota on submission. */ }
       mutation.mutate(q);
     },
-    [mutation]
+    [mutation, notify]
   );
 
   const handleDirectSend = useCallback(() => {

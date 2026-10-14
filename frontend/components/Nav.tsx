@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Activity,
+  KeyRound,
 } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { useAuth } from "./CloudAuthGate";
@@ -64,7 +65,7 @@ export function Nav({
     return () => { mounted = false; };
   }, [userId]);
   const visibleLinks = isAdmin
-    ? [...links, { href: "/admin", label: "Admin & Analytics", icon: Activity }]
+    ? [...links, { href: "/admin", label: "Admin & Analytics", icon: Activity }, { href: "/admin/api-key-analytics", label: "API Key Analytics", icon: KeyRound }]
     : links;
   const name = typeof session?.user.user_metadata?.preferred_name === "string" ? session.user.user_metadata.preferred_name : typeof session?.user.user_metadata?.full_name === "string" ? session.user.user_metadata.full_name : session?.user.email?.split("@")[0];
   return (

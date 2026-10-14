@@ -130,6 +130,29 @@ def quota_add(tenant_id: str, kind: str, day: str, amount: int) -> int:
         return int(row[0])
 
 
+def record_llm_attempt(event: dict) -> None:
+    """Persist redacted provider-attempt metadata; never prompts or secrets."""
+    with connect() as conn:
+        conn.execute(
+            """INSERT INTO public.mm_llm_usage_events
+               (request_id, tenant_id, user_id, task_type, provider, model, key_alias,
+                quota_scope, status, http_status, latency_ms, input_tokens, output_tokens,
+                total_tokens, retry_count, fallback_used, fallback_reason, error_code,
+                rpd_limit, rpd_remaining, rpd_reset, tpm_limit, tpm_remaining, tpm_reset)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (event.get("request_id"), event.get("tenant_id"), event.get("user_id"),
+             event["task_type"], event["provider"], event["model"], event["key_alias"],
+             event.get("quota_scope"), event["status"], event.get("http_status"),
+             event.get("latency_ms"), event.get("input_tokens"), event.get("output_tokens"),
+             event.get("total_tokens"), event.get("retry_count", 0),
+             event.get("fallback_used", False), event.get("fallback_reason"),
+             event.get("error_code"), event.get("rpd_limit"), event.get("rpd_remaining"),
+             event.get("rpd_reset"), event.get("tpm_limit"), event.get("tpm_remaining"),
+             event.get("tpm_reset")),
+        )
+        conn.commit()
+
+
 @contextmanager
 def resource_lock(tenant_id: str, resource_id: str):
     """Serialize ingestion of the same resource (replaces the Redis lock).

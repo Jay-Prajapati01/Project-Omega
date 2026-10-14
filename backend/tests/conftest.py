@@ -74,12 +74,12 @@ async def _fake_embed_texts(texts: list[str], purpose: str = "document") -> list
     return [_vec(t) for t in texts]
 
 
-async def _fake_generate(prompt: str, system: str | None = None) -> str:
+async def _fake_generate(prompt: str, system: str | None = None, task_type: str = "other") -> str:
     return "This is a mocked LLM answer used by the test suite."
 
 
 async def _fake_generate_stream(
-    prompt: str, system: str | None = None
+    prompt: str, system: str | None = None, task_type: str = "other"
 ) -> AsyncIterator[str]:
     for token in ["Mocked ", "streamed ", "answer."]:
         yield token

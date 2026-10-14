@@ -117,6 +117,8 @@ In the AWS console, the first rollout should appear under **Elastic Container Se
 
 ## 6. Launch checks and rollback
 
+Before deploying the Groq usage dashboard, apply `backend/migrations/202610140003_llm_usage_analytics.sql` to the configured Supabase/Postgres database. Configure `GROQ_API_KEY` (and optional `GROQ_API_KEY_SECONDARY`) as backend Secrets Manager values. Terraform examples select `openai/gpt-oss-20b`; check the live Groq project limits and configure the shared Redis safety budgets before increasing service counts. See [Groq production rollout](groq-production.md) for the full verification and rollback checklist.
+
 Before sharing the site, test signup/login/OAuth/password reset, auth redirects, source reads/writes, YouTube and Instagram jobs, uploads, AI chat, job retries, account isolation, admin authorization, consent/privacy flows, contact form, and 404 behavior on the actual HTTPS host. Check CloudWatch logs/alarms, Redis/database connectivity, Qdrant, provider quotas, and worker completion. Run the read-only k6 load scenario only against isolated staging; it does not load-test ingestion or paid AI calls.
 
 Use **CloudWatch → Log groups → `/ecs/mindmesh-production/`** to inspect API, web, and worker logs; use **CloudWatch → Alarms** for configured AWS alarms. For WAF, open **WAF & Shield → Web ACLs → mindmesh-production-web-acl** and review sampled requests and blocked/rate-limited traffic. Do not expose task IPs directly: tasks run in private subnets and the public entry point is the ALB. See [ECS outbound networking](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/networking-outbound.html).

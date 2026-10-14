@@ -60,6 +60,13 @@ def test_chat_empty_question(client):
     assert data["chunks_searched"] == 0
 
 
+def test_chat_quota_status_is_honestly_disabled_in_local_mode(client):
+    resp = client.get("/api/chat/quota")
+    assert resp.status_code == 200
+    assert resp.json() == {"enabled": False, "used": None, "limit": None,
+                           "remaining": None, "warning_threshold": 80}
+
+
 def test_chat_whitespace_question_is_graceful(client):
     resp = client.post("/api/chat", json={"question": "   "})
     assert resp.status_code == 200

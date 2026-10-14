@@ -143,3 +143,66 @@ async def admin_analytics():
         "features": [{"feature": row[0], "uses": int(row[1]), "users": int(row[2])} for row in features],
         "window": "30 days for pages/features; 14 days for daily visitors; online means active in the last 5 minutes",
     }
+
+
+@router.get("/v1/admin/api-key-analytics")
+async def admin_api_key_analytics():
+    """Platform-admin-only, prompt-free provider usage and quota telemetry."""
+    scope()
+    if commerce.entitlement()["role"] not in {"owner", "admin"}:
+        raise HTTPException(403, "Admin access is required.")
+    settings = get_settings()
+    mode = settings.mindmesh_execution_mode
+    provider = settings.llm_provider or ("ollama" if mode == "local" else "unconfigured")
+    model = settings.groq_model if provider == "groq" else settings.xai_model if provider == "xai" else settings.llm_model
+    if not cloud():
+        return {"mode": mode, "provider": provider, "model": model, "recording": False,
+                "message": "Local mode is using Ollama. No external API-key usage is being recorded in this environment.",
+                "totals": {}, "by_task": [], "recent": []}
+    try:
+        with connect() as conn:
+            totals = conn.execute("""select count(*), count(*) filter(where status='success'),
+                count(*) filter(where status<>'success'), coalesce(sum(input_tokens),0),
+                coalesce(sum(output_tokens),0), coalesce(sum(total_tokens),0),
+                coalesce(avg(latency_ms),0), count(*) filter(where status='rate_limited'),
+                coalesce(sum(retry_count),0), count(*) filter(where fallback_used)
+                from public.mm_llm_usage_events where created_at >= now()-interval '24 hours'""").fetchone()
+            by_task = conn.execute("""select task_type,count(*),count(*) filter(where status='success'),
+                count(*) filter(where status='rate_limited') from public.mm_llm_usage_events
+                where created_at >= now()-interval '30 days' group by task_type order by count(*) desc""").fetchall()
+            quota = conn.execute("""select created_at, model, quota_scope, rpd_limit, rpd_remaining, rpd_reset,
+                tpm_limit, tpm_remaining, tpm_reset from public.mm_llm_usage_events
+                where rpd_limit is not null or rpd_remaining is not null or tpm_limit is not null or tpm_remaining is not null
+                order by created_at desc limit 1""").fetchone()
+            key_stats = conn.execute("""select key_alias, max(provider), max(model), count(*),
+                max(created_at), count(*) filter(where status='auth_error')
+                from public.mm_llm_usage_events where created_at >= now()-interval '30 days'
+                group by key_alias order by key_alias""").fetchall()
+            recent = conn.execute("""select created_at,request_id,task_type,provider,model,key_alias,quota_scope,
+                status,http_status,latency_ms,input_tokens,output_tokens,total_tokens,retry_count,
+                fallback_used,fallback_reason,error_code,rpd_limit,rpd_remaining,rpd_reset,
+                tpm_limit,tpm_remaining,tpm_reset from public.mm_llm_usage_events
+                order by created_at desc limit 100""").fetchall()
+        columns = ("created_at request_id task_type provider model key_alias quota_scope status http_status latency_ms "
+                   "input_tokens output_tokens total_tokens retry_count fallback_used fallback_reason error_code "
+                   "rpd_limit rpd_remaining rpd_reset tpm_limit tpm_remaining tpm_reset").split()
+        return {"mode": mode, "provider": provider, "model": model, "recording": True,
+                "quota_scope_note": "Groq remaining quota is organization/project and model scoped, not per API key.",
+                "totals": {"attempts_24h": totals[0], "successes_24h": totals[1], "failures_24h": totals[2],
+                           "input_tokens_24h": totals[3], "output_tokens_24h": totals[4], "total_tokens_24h": totals[5],
+                           "average_latency_ms_24h": round(float(totals[6] or 0)), "rate_limits_24h": totals[7],
+                           "retries_24h": totals[8], "fallbacks_24h": totals[9]},
+                "by_task_30d": [{"task_type": r[0], "attempts": r[1], "successes": r[2], "rate_limits": r[3]} for r in by_task],
+                "keys": [{"alias": r[0], "provider": r[1], "model": r[2],
+                          "configured": bool(settings.groq_api_key if r[0] == "groq_primary" else settings.groq_api_key_secondary if r[0] == "groq_secondary" else settings.xai_api_key),
+                          "attempts_30d": r[3], "last_used_at": r[4],
+                          "auth_failures_30d": r[5], "health": "credential_error" if r[5] else "observed"}
+                         for r in key_stats],
+                "quota_snapshot": ({"observed_at": quota[0], "model": quota[1], "scope": quota[2],
+                                    "source": "response_header", "requests_per_day_limit": quota[3],
+                                    "requests_per_day_remaining": quota[4], "requests_per_day_reset": quota[5],
+                                    "tokens_per_minute_limit": quota[6], "tokens_per_minute_remaining": quota[7],
+                                    "tokens_per_minute_reset": quota[8]} if quota else None),
+                "recent": [dict(zip(columns, row)) for row in recent]}
+    except Exception as exc:
+        raise HTTPException(503, "Provider analytics storage is unavailable. Apply the LLM usage migration.") from exc
