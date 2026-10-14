@@ -87,7 +87,7 @@ Terraform creates Secret Manager entries for the application secrets and automat
    - `qdrant-api-key` ← `QDRANT_API_KEY`
    - `gemini-api-key` ← `GEMINI_API_KEY`
    - `groq-api-key` ← `GROQ_API_KEY` (or supply `XAI_API_KEY` if `llm_provider = "xai"`)
-   - `xai-api-key` ← `XAI_API_KEY` (leave empty only when not selected)
+   - `xai-api-key` ← `XAI_API_KEY` (required for xAI primary or optional Groq failover)
    - `byok-encryption-key` ← `BYOK_ENCRYPTION_KEY` (fresh base64url-encoded 32-byte value)
    - `promo-hmac-pepper` ← `PROMO_HMAC_PEPPER` (fresh long random value)
    - `owner-bootstrap-user-id` already contains `disabled`. Leave it that way unless you have created the real owner account; then add a new version containing that account's Supabase Auth UUID.

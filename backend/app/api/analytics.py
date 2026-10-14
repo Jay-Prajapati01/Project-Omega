@@ -165,7 +165,7 @@ async def admin_api_key_analytics():
                 count(*) filter(where status<>'success'), coalesce(sum(input_tokens),0),
                 coalesce(sum(output_tokens),0), coalesce(sum(total_tokens),0),
                 coalesce(avg(latency_ms),0), count(*) filter(where status='rate_limited'),
-                coalesce(sum(retry_count),0), count(*) filter(where fallback_used)
+                coalesce(sum(retry_count),0), count(distinct request_id) filter(where fallback_used)
                 from public.mm_llm_usage_events where created_at >= now()-interval '24 hours'""").fetchone()
             by_task = conn.execute("""select task_type,count(*),count(*) filter(where status='success'),
                 count(*) filter(where status='rate_limited') from public.mm_llm_usage_events
@@ -175,7 +175,8 @@ async def admin_api_key_analytics():
                 where rpd_limit is not null or rpd_remaining is not null or tpm_limit is not null or tpm_remaining is not null
                 order by created_at desc limit 1""").fetchone()
             key_stats = conn.execute("""select key_alias, max(provider), max(model), count(*),
-                max(created_at), count(*) filter(where status='auth_error')
+                count(*) filter(where status='success'), count(*) filter(where status<>'success'),
+                coalesce(sum(total_tokens),0), max(created_at), count(*) filter(where status='auth_error')
                 from public.mm_llm_usage_events where created_at >= now()-interval '30 days'
                 group by key_alias order by key_alias""").fetchall()
             recent = conn.execute("""select created_at,request_id,task_type,provider,model,key_alias,quota_scope,
@@ -187,16 +188,16 @@ async def admin_api_key_analytics():
                    "input_tokens output_tokens total_tokens retry_count fallback_used fallback_reason error_code "
                    "rpd_limit rpd_remaining rpd_reset tpm_limit tpm_remaining tpm_reset").split()
         return {"mode": mode, "provider": provider, "model": model, "recording": True,
-                "quota_scope_note": "Groq remaining quota is organization/project and model scoped, not per API key.",
+                "quota_scope_note": "Per-alias figures are attributed call activity and token usage, not a separate quota. Groq limits are shared at organization/project and model scope.",
                 "totals": {"attempts_24h": totals[0], "successes_24h": totals[1], "failures_24h": totals[2],
                            "input_tokens_24h": totals[3], "output_tokens_24h": totals[4], "total_tokens_24h": totals[5],
                            "average_latency_ms_24h": round(float(totals[6] or 0)), "rate_limits_24h": totals[7],
                            "retries_24h": totals[8], "fallbacks_24h": totals[9]},
                 "by_task_30d": [{"task_type": r[0], "attempts": r[1], "successes": r[2], "rate_limits": r[3]} for r in by_task],
                 "keys": [{"alias": r[0], "provider": r[1], "model": r[2],
-                          "configured": bool(settings.groq_api_key if r[0] == "groq_primary" else settings.groq_api_key_secondary if r[0] == "groq_secondary" else settings.xai_api_key),
-                          "attempts_30d": r[3], "last_used_at": r[4],
-                          "auth_failures_30d": r[5], "health": "credential_error" if r[5] else "observed"}
+                          "attempts_30d": r[3], "successes_30d": r[4], "failures_30d": r[5],
+                          "tokens_30d": r[6], "last_used_at": r[7],
+                          "auth_failures_30d": r[8], "health": "credential_error" if r[8] else "observed"}
                          for r in key_stats],
                 "quota_snapshot": ({"observed_at": quota[0], "model": quota[1], "scope": quota[2],
                                     "source": "response_header", "requests_per_day_limit": quota[3],

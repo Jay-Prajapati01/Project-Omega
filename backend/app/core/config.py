@@ -49,8 +49,12 @@ class Settings(BaseSettings):
     cloud_tasks_dispatch_secret: str = ""
     cloud_run_job_name: str = "mindmesh-worker"
     llm_provider: str = ""
+    # Optional cross-provider failover. Same-provider Groq key rotation is
+    # reserved for credential-specific 401s, never shared 429/outage recovery.
+    llm_fallback_provider: str = ""
     xai_api_key: str = ""
     xai_model: str = ""
+    xai_fallback_model: str = ""
     groq_api_key: str = ""
     groq_api_key_secondary: str = ""
     groq_model: str = "openai/gpt-oss-20b"
@@ -308,6 +312,12 @@ class Settings(BaseSettings):
                 raise ValueError("xAI requires XAI_API_KEY and XAI_MODEL")
             if self.llm_provider == "groq" and not self.groq_api_key:
                 raise ValueError("Groq requires GROQ_API_KEY")
+            if self.llm_fallback_provider not in {"", "xai"}:
+                raise ValueError("LLM_FALLBACK_PROVIDER must be empty or xai")
+            if self.llm_fallback_provider == self.llm_provider:
+                raise ValueError("LLM_FALLBACK_PROVIDER must be different from LLM_PROVIDER")
+            if self.llm_fallback_provider == "xai" and not (self.xai_api_key and self.xai_fallback_model):
+                raise ValueError("xAI failover requires XAI_API_KEY and XAI_FALLBACK_MODEL")
             from urllib.parse import urlparse
             if any(urlparse(o).scheme != "https" or urlparse(o).hostname in {"localhost", "127.0.0.1"}
                    for o in self.cors_origin_list):

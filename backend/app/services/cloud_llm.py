@@ -55,6 +55,59 @@ def _event(event: dict) -> None:
         logger.warning("LLM usage event persistence failed (%s)", type(exc).__name__)
 
 
+def _fallback_enabled(cfg) -> bool:
+    return cfg.llm_provider == "groq" and cfg.llm_fallback_provider == "xai"
+
+
+async def _xai_failover(prompt: str, system: str | None, task_type: str, request_id: str,
+                        tenant_id: str | None, user_id: str | None, reason: str) -> str:
+    """Use an explicitly provisioned independent provider; never rotate Groq keys for shared limits."""
+    cfg = get_settings()
+    if not _fallback_enabled(cfg) or not cfg.xai_api_key or not cfg.xai_fallback_model:
+        raise WorkerUnavailable("LLM temporarily unavailable")
+    messages = ([{"role": "system", "content": system}] if system else [])
+    messages.append({"role": "user", "content": prompt})
+    started = time.perf_counter()
+    status, code, usage = "upstream_error", None, {}
+    try:
+        async with httpx.AsyncClient(timeout=90) as client:
+            response = await client.post(
+                "https://api.x.ai/v1/chat/completions",
+                headers={"Authorization": "Bearer " + cfg.xai_api_key, "X-Request-ID": request_id},
+                json={"model": cfg.xai_fallback_model, "messages": messages, "stream": False,
+                      "max_completion_tokens": 2048},
+            )
+        code = response.status_code
+        if code >= 400:
+            status = "rate_limited" if code == 429 else "upstream_error" if code >= 500 else "invalid_request"
+            raise WorkerUnavailable("LLM temporarily unavailable")
+        body = response.json()
+        answer = body["choices"][0]["message"]["content"]
+        if not isinstance(answer, str) or not answer.strip():
+            raise ValueError("empty_completion")
+        usage = body.get("usage") or {}
+        status = "success"
+        return answer.strip()
+    except WorkerUnavailable:
+        raise
+    except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
+        status = "timeout" if isinstance(exc, httpx.HTTPError) else "invalid_request"
+        raise WorkerUnavailable("LLM temporarily unavailable") from None
+    finally:
+        await asyncio.to_thread(_event, {
+            "request_id": request_id, "tenant_id": tenant_id, "user_id": user_id,
+            "task_type": task_type if task_type in {"ask_ai", "ingestion_summary", "other"} else "other",
+            "provider": "xai", "model": cfg.xai_fallback_model, "key_alias": "xai_fallback",
+            "quota_scope": "provider/model", "status": status, "http_status": code,
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+            "input_tokens": usage.get("prompt_tokens") if isinstance(usage, dict) else None,
+            "output_tokens": usage.get("completion_tokens") if isinstance(usage, dict) else None,
+            "total_tokens": usage.get("total_tokens") if isinstance(usage, dict) else None,
+            "retry_count": 0, "fallback_used": True, "fallback_reason": reason,
+            "error_code": None if status == "success" else status,
+        })
+
+
 async def generate(prompt: str, system: str | None = None, task_type: str = "other") -> str:
     cfg = get_settings()
     if cfg.llm_provider == "xai":
@@ -83,8 +136,12 @@ async def generate(prompt: str, system: str | None = None, task_type: str = "oth
                     from app.core.ratelimit import (RateLimitUnavailable, provider_circuit_remaining,
                                                     provider_cooldown_remaining, reserve_provider_budget)
                     if provider_circuit_remaining(model, cfg):
+                        if _fallback_enabled(cfg):
+                            return await _xai_failover(prompt, system, task_type, request_id, tenant_id, user_id, "provider_unavailable")
                         raise WorkerUnavailable("LLM temporarily unavailable")
                     if provider_cooldown_remaining(model, cfg):
+                        if _fallback_enabled(cfg):
+                            return await _xai_failover(prompt, system, task_type, request_id, tenant_id, user_id, "provider_rate_limited")
                         raise WorkerUnavailable("LLM temporarily unavailable")
                     allowed, _retry = reserve_provider_budget(model, reserved_tokens, cfg)
                     if not allowed:
@@ -112,6 +169,8 @@ async def generate(prompt: str, system: str | None = None, task_type: str = "oth
                         auth_failover_used = True
                 elif code == 429:
                     status, code_class = "rate_limited", "provider_rate_limited"
+                elif code in {408, 425}:
+                    status, code_class = "upstream_error", "provider_transient"
                 elif code >= 500:
                     status, code_class = "upstream_error", "provider_5xx"
                 elif code >= 400:
@@ -133,17 +192,25 @@ async def generate(prompt: str, system: str | None = None, task_type: str = "oth
                         reconcile_provider_tokens(model, reserved_tokens, total_tokens, cfg)
                     except Exception:
                         pass
+                fallback_reason = None
+                if _fallback_enabled(cfg):
+                    if status == "rate_limited":
+                        fallback_reason = "provider_rate_limited"
+                    elif status == "upstream_error" and retry_count >= 2:
+                        fallback_reason = "provider_unavailable"
+                    elif status == "auth_error" and key_index == len(keys) - 1:
+                        fallback_reason = "credential_rejected"
                 await asyncio.to_thread(_event, {
                     "request_id": request_id, "tenant_id": tenant_id, "user_id": user_id,
                     "task_type": task_type if task_type in {"ask_ai", "ingestion_summary", "other"} else "other",
                     "provider": cfg.llm_provider, "model": model, "key_alias": alias,
-                    "quota_scope": "organization/model" if cfg.llm_provider == "groq" else "provider/model",
+                    "quota_scope": "provider_shared/model" if cfg.llm_provider == "groq" else "provider/model",
                     "status": status, "http_status": code,
                     "latency_ms": int((time.perf_counter() - started) * 1000),
                     "input_tokens": input_tokens, "output_tokens": output_tokens,
                     "total_tokens": total_tokens, "retry_count": retry_count,
-                    "fallback_used": auth_failover_used,
-                    "fallback_reason": "credential_rejected" if auth_failover_used else None,
+                    "fallback_used": bool(fallback_reason) or auth_failover_used,
+                    "fallback_reason": fallback_reason or ("credential_rejected" if auth_failover_used else None),
                     "error_code": code_class,
                     "rpd_limit": _header_int(headers, "x-ratelimit-limit-requests"),
                     "rpd_remaining": _header_int(headers, "x-ratelimit-remaining-requests"),
@@ -190,6 +257,10 @@ async def generate(prompt: str, system: str | None = None, task_type: str = "oth
                         # retrying when its shared cooldown store is unavailable.
                         pass
                     logger.warning("LLM provider rate limited model=%s retry_after=%s", model, retry_after)
+                    if fallback_reason:
+                        return await _xai_failover(prompt, system, task_type, request_id, tenant_id, user_id, fallback_reason)
+                if status == "upstream_error" and fallback_reason:
+                    return await _xai_failover(prompt, system, task_type, request_id, tenant_id, user_id, fallback_reason)
                 raise WorkerUnavailable("LLM temporarily unavailable")
             except WorkerUnavailable:
                 raise
@@ -198,10 +269,12 @@ async def generate(prompt: str, system: str | None = None, task_type: str = "oth
                     "request_id": request_id, "tenant_id": tenant_id, "user_id": user_id,
                     "task_type": task_type if task_type in {"ask_ai", "ingestion_summary", "other"} else "other",
                     "provider": cfg.llm_provider, "model": model, "key_alias": alias,
-                    "quota_scope": "organization/model" if cfg.llm_provider == "groq" else "provider/model",
+                    "quota_scope": "provider_shared/model" if cfg.llm_provider == "groq" else "provider/model",
                     "status": "timeout",
                     "http_status": code, "latency_ms": int((time.perf_counter() - started) * 1000),
-                    "retry_count": retry_count, "error_code": "network_or_response_error",
+                    "retry_count": retry_count, "fallback_used": _fallback_enabled(cfg) and retry_count >= 1,
+                    "fallback_reason": "provider_unavailable" if _fallback_enabled(cfg) and retry_count >= 1 else None,
+                    "error_code": "network_or_response_error",
                 })
                 if cfg.llm_provider == "groq":
                     try:
@@ -213,17 +286,21 @@ async def generate(prompt: str, system: str | None = None, task_type: str = "oth
                     retry_count += 1
                     await asyncio.sleep(0.2)
                     continue
+                if _fallback_enabled(cfg):
+                    return await _xai_failover(prompt, system, task_type, request_id, tenant_id, user_id, "provider_unavailable")
                 raise WorkerUnavailable("LLM temporarily unavailable") from None
             except (ValueError, KeyError, IndexError, TypeError):
                 await asyncio.to_thread(_event, {
                     "request_id": request_id, "tenant_id": tenant_id, "user_id": user_id,
                     "task_type": task_type if task_type in {"ask_ai", "ingestion_summary", "other"} else "other",
                     "provider": cfg.llm_provider, "model": model, "key_alias": alias,
-                    "quota_scope": "organization/model" if cfg.llm_provider == "groq" else "provider/model",
+                    "quota_scope": "provider_shared/model" if cfg.llm_provider == "groq" else "provider/model",
                     "status": "invalid_request", "http_status": code,
                     "latency_ms": int((time.perf_counter() - started) * 1000),
                     "retry_count": retry_count, "error_code": "invalid_provider_response",
                 })
                 raise WorkerUnavailable("LLM temporarily unavailable") from None
-        # Only a credential-specific 401 reaches this point. Never rotate on 429.
+        # Only a credential-specific 401 advances to another Groq credential.
+    if _fallback_enabled(cfg):
+        return await _xai_failover(prompt, system, task_type, request_id, tenant_id, user_id, "credential_rejected")
     raise WorkerUnavailable("LLM temporarily unavailable")

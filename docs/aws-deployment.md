@@ -88,7 +88,7 @@ In AWS Console, open **Secrets Manager → Secrets → the Terraform output secr
 }
 ```
 
-Use the real Supabase transaction-pooler URI with TLS. For `llm_provider = "xai"`, supply `XAI_API_KEY` and change `llm_model`; for Groq, `GROQ_API_KEY` is required. The JSON fields must exist even if an unused provider field is an empty string. Generate BYOK/HMAC secrets with a trusted password manager or secrets tool; never reuse them in another environment. The Redis URL is injected from the private TLS ElastiCache endpoint by the task definition.
+Use the real Supabase transaction-pooler URI with TLS. For `llm_provider = "xai"`, supply `XAI_API_KEY` and change `llm_model`; for Groq, `GROQ_API_KEY` is required. Optional independent xAI failover from Groq uses `llm_fallback_provider = "xai"`, `xai_fallback_model`, and `XAI_API_KEY`; the default is disabled. It handles Groq 429 and transient provider failures without rotating Groq keys to bypass shared quota. The JSON fields must exist even if an unused provider field is an empty string. Generate BYOK/HMAC secrets with a trusted password manager or secrets tool; never reuse them in another environment. The Redis URL is injected from the private TLS ElastiCache endpoint by the task definition.
 
 If you need the admin portal, create/sign up the owner account first, copy its Supabase Auth UUID into `OWNER_BOOTSTRAP_USER_ID`, update the secret, and redeploy the API and worker. Don't use test/demo credentials for the public owner account.
 
