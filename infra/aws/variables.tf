@@ -117,24 +117,10 @@ variable "llm_model" {
   type    = string
   default = "openai/gpt-oss-20b"
 }
-variable "llm_fallback_provider" {
-  type        = string
-  default     = ""
-  description = "Optional independent provider for Groq 429 and transient outage failover. Leave empty to disable."
-  validation {
-    condition     = contains(["", "xai"], var.llm_fallback_provider)
-    error_message = "llm_fallback_provider must be empty or xai."
-  }
-}
-variable "xai_fallback_model" {
-  type        = string
-  default     = ""
-  description = "Required XAI model ID when llm_fallback_provider is xai."
-}
 variable "enable_groq_secondary" {
   type        = bool
   default     = false
-  description = "Inject GROQ_API_KEY_SECONDARY from the backend Secrets Manager JSON when true."
+  description = "Inject GROQ_API_KEY_SECONDARY from the backend Secrets Manager JSON when true. Used only after a 401 credential failure."
 }
 variable "embedding_model" {
   type    = string

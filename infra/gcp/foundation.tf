@@ -18,7 +18,7 @@ locals {
   ])
   public_runtime_secrets = setunion(toset([
     "SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_DB_URL",
-    "QDRANT_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "XAI_API_KEY",
+    "QDRANT_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "GROQ_API_KEYS", "XAI_API_KEY",
     "BYOK_ENCRYPTION_KEY", "PROMO_HMAC_PEPPER", "OWNER_BOOTSTRAP_USER_ID",
   ]), var.enable_groq_secondary ? toset(["GROQ_API_KEY_SECONDARY"]) : toset([]))
   all_runtime_secrets = setunion(local.public_runtime_secrets, toset([

@@ -97,10 +97,8 @@ locals {
     { name = "QDRANT_URL", value = var.qdrant_url },
     { name = "QDRANT_COLLECTION", value = var.qdrant_collection },
     { name = "LLM_PROVIDER", value = var.llm_provider },
-    { name = "LLM_FALLBACK_PROVIDER", value = var.llm_fallback_provider },
     { name = "GROQ_MODEL", value = var.llm_model },
     { name = "XAI_MODEL", value = var.llm_model },
-    { name = "XAI_FALLBACK_MODEL", value = var.xai_fallback_model },
     { name = "EMBEDDING_PROVIDER", value = "gemini" },
     { name = "EMBEDDING_MODEL", value = var.embedding_model },
     { name = "EMBEDDING_DIM", value = tostring(var.embedding_dim) },
@@ -115,7 +113,7 @@ locals {
   ]
   runtime_secret_names = concat([
     "SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_DB_URL",
-    "QDRANT_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "XAI_API_KEY",
+    "QDRANT_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "GROQ_API_KEYS", "XAI_API_KEY",
     "BYOK_ENCRYPTION_KEY", "PROMO_HMAC_PEPPER", "OWNER_BOOTSTRAP_USER_ID"
   ], var.enable_groq_secondary ? ["GROQ_API_KEY_SECONDARY"] : [])
   backend_secrets = [for key in local.runtime_secret_names : {

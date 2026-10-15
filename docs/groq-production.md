@@ -4,19 +4,9 @@ This adds Groq `openai/gpt-oss-20b` as the cloud LLM default while leaving the l
 
 ## Runtime configuration
 
-Cloud API and worker services read `LLM_PROVIDER=groq`, `GROQ_MODEL=openai/gpt-oss-20b`, and backend-only `GROQ_API_KEY`. An optional `GROQ_API_KEY_SECONDARY` is used only after a credential-specific 401. Same-organization Groq keys are never rotated to recover from 429s or provider outages because they do not multiply quota. Groq applies organization limits and may impose lower project/model limits; response headers are shared-scope observations, not per-key balances ([rate-limit docs](https://console.groq.com/docs/rate-limits), [project docs](https://console.groq.com/docs/projects)).
+Cloud API and worker services read `LLM_PROVIDER=groq`, `GROQ_MODEL=openai/gpt-oss-20b`, and backend-only `GROQ_API_KEY`. Optional additional credentials can be supplied as comma-separated or newline-separated strings in `GROQ_API_KEYS` (or through the legacy optional `GROQ_API_KEY_SECONDARY` field). The service advances to another credential only after an authentication-specific 401. It does not rotate on 429s, provider outages, or shared cooldowns. Groq applies organization limits and may impose lower project/model limits; response headers are shared-scope observations, not per-key balances ([rate-limit docs](https://console.groq.com/docs/rate-limits), [project docs](https://console.groq.com/docs/projects)).
 
-## Independent provider failover
-
-For automatic recovery from a Groq 429, repeated 5xx, network timeout, or shared cooldown/circuit-open state, explicitly configure a separate xAI provider:
-
-```env
-LLM_FALLBACK_PROVIDER=xai
-XAI_API_KEY=<xAI secret>
-XAI_FALLBACK_MODEL=<model enabled for your xAI account>
-```
-
-Failover is disabled by default. A configured xAI provider is attempted once for a Groq 429 (after recording cooldown) or after bounded retries for transient failures. Same-provider Groq key rotation remains limited to 401 credential rejection. In AWS/GCP Terraform, set `llm_fallback_provider = "xai"`, provide `xai_fallback_model`, and put the xAI secret in the existing backend secret payload as `XAI_API_KEY`. Failover may incur separate provider charges, so configure that provider's own spending limits before enabling it.
+There is no xAI fallback in this deployment path. A Groq 429, outage, or shared circuit/cooldown produces a temporary-unavailable response; the application respects the provider's shared limits rather than switching accounts to evade them. If a separate provider is intentionally configured as the primary, its key is used only for that configured primary.
 
 The initial internal Redis safety ceilings are `GROQ_SAFE_RPM=24`, `GROQ_SAFE_RPD=800`, `GROQ_SAFE_TPM=6400`, and `GROQ_SAFE_TPD=160000` (defaults are 80% of the documented 30 RPM / 1,000 RPD / 8,000 TPM / 200,000 TPD snapshot). These are conservative rolling application budgets; inspect live Groq organization limits and reduce them if other apps share that organization. Redis is shared across API/worker replicas. Provider 429 responses create a shared cooldown using `Retry-After` or the relevant exhausted reset header; keys are never rotated to evade quota. Token reservations use a prompt-size estimate and are reconciled to actual usage when Groq returns token counts. A Redis circuit breaker opens after the configured consecutive upstream-failure threshold.
 
@@ -25,12 +15,12 @@ Groq usage headers `x-ratelimit-*-requests` are recorded as RPD and `x-ratelimit
 ## Deploy and migrate
 
 1. In Groq Console, confirm the production project's access to `openai/gpt-oss-20b` and review its current limits and usage policy.
-2. Set the backend `GROQ_API_KEY` secret in AWS Secrets Manager or Google Secret Manager. For the optional secondary credential, set `enable_groq_secondary = true` in the chosen cloud's Terraform variables and add `GROQ_API_KEY_SECONDARY` to that platform's backend secret store before applying/redeploying. Use a distinct authorized credential for key resiliency, not quota bypass.
+2. Set the backend `GROQ_API_KEY` secret in AWS Secrets Manager or Google Secret Manager. Additional authorized credentials may be placed one per line or comma-separated in `GROQ_API_KEYS`; the legacy `GROQ_API_KEY_SECONDARY` field is also supported. These credentials only provide recovery from a rejected/invalid key (401), not quota failover. Do not use multiple accounts to circumvent provider limits or free-tier restrictions.
 3. Confirm Redis is reachable by the API and worker services. This is required for shared application/provider limits in production.
 4. Apply `backend/migrations/202610140003_llm_usage_analytics.sql` using the established Supabase migration process before deploying the API image.
 5. Keep `MINDMESH_EXECUTION_MODE=local` for development. Cloud infrastructure sets `GROQ_MODEL` from `infra/aws` or `infra/gcp` `llm_model`; the checked-in examples now select GPT-OSS 20B.
 6. Deploy API and workers together, then make one Ask AI request and process one new item. Confirm the calls appear under their respective task labels in **API Key Analytics**.
-7. Verify a 401 can use the optional secondary credential, a 429 does not rotate keys, and the admin dashboard exposes no raw key or prompt text.
+7. Verify a 401 can use the next configured credential, a 429 does not rotate credentials, and the admin dashboard exposes no raw key or prompt text.
 
 ## Rollback and retention
 
