@@ -375,8 +375,8 @@ def create_app() -> FastAPI:
 
     # Graph rebuilds are local-only; cloud deployments run costly extraction
     # through the job facade and expose only the scoped graph read endpoint.
-    graph_router = _only_methods(graph.router, {"GET"}) if settings.mindmesh_execution_mode in {"modal", "cloud"} else graph
-    read_routers = [notes, stats, sources, graph_router]
+    graph_router = _only_methods(graph.router, {"GET"}) if settings.mindmesh_execution_mode in {"modal", "cloud"} else graph.router
+    read_routers = [notes.router, stats.router, sources.router, graph_router]
 
     app.include_router(health.router, prefix=settings.api_prefix)
     # Public contact intake: intentionally outside `mutating`/`read_deps` so
@@ -392,7 +392,7 @@ def create_app() -> FastAPI:
     for router in post_only:
         app.include_router(router.router, prefix=settings.api_prefix, dependencies=mutating)
     for router in read_routers:
-        app.include_router(router.router, prefix=settings.api_prefix, dependencies=read_deps)
+        app.include_router(router, prefix=settings.api_prefix, dependencies=read_deps)
 
     @app.get("/")
     async def root() -> dict:
