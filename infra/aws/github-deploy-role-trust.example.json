@@ -9,10 +9,8 @@
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:Jay-Prajapati01/Project-Omega:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": "repo:Jay-Prajapati01@180059542/Project-Omega@1418075040:ref:refs/heads/main"
         }
       }
     }
