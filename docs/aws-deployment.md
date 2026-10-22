@@ -16,7 +16,7 @@ Have these ready:
 - The real legal business name and monitored privacy contact email. The public privacy page is still a draft and must be reviewed for your actual data, retention, provider locations, and legal requirements.
 - Docker, Terraform 1.9+, AWS CLI, and access to the GitHub repository.
 
-The infrastructure uses two NAT gateways, a two-node Redis replication group, two API tasks, and two website tasks by default. These resources have ongoing charges. Review the AWS Pricing Calculator and your database/provider quotas before applying. Tune `api_max_count`, task sizes, and database pool sizes to the Supabase plan; the API/worker pools are per process, and each worker task has a polling process plus a job child process.
+The infrastructure uses two NAT gateways, a two-node Redis replication group, one API task, and one website task by default (optimized to stay within the 8 vCPU Fargate quota). These resources have ongoing charges. Review the AWS Pricing Calculator and your database/provider quotas before applying. Tune `api_max_count`, `web_max_count`, task sizes, and database pool sizes to the Supabase plan; the API/worker pools are per process, and each worker task has a polling process plus a job child process.
 
 ## Console setup: click-by-click
 
@@ -108,7 +108,7 @@ If you need the admin portal, create/sign up the owner account first, copy its S
    Set-Location ../..
    ```
 
-   This starts two web tasks, two API tasks, and one worker task. API/web scale on CPU; worker count is an operator setting until queue-depth autoscaling is implemented.
+   This starts one web task, one API task, and one worker task. API/web scale on CPU; worker count is an operator setting until queue-depth autoscaling is implemented.
 4. Verify Route 53 resolves both names and ACM status is `Issued`. Wait for ECS services to report steady state and ALB targets healthy.
 5. For each subsequent GitHub Actions release, check `deploy` to force ECS to pull the new `prod` image tags. The workflow also pushes the immutable commit SHA tags for traceability.
 

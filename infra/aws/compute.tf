@@ -35,7 +35,7 @@ resource "aws_ecs_service" "web" {
   name                               = "${local.name}-web"
   cluster                            = aws_ecs_cluster.main.id
   task_definition                    = aws_ecs_task_definition.web.arn
-  desired_count                      = var.api_desired_count
+  desired_count                      = var.web_desired_count
   launch_type                        = "FARGATE"
   platform_version                   = "LATEST"
   health_check_grace_period_seconds  = 120
@@ -110,8 +110,8 @@ resource "aws_appautoscaling_policy" "api_cpu" {
 
 resource "aws_appautoscaling_target" "web" {
   count              = var.deploy_services ? 1 : 0
-  max_capacity       = var.api_max_count
-  min_capacity       = var.api_min_count
+  max_capacity       = var.web_max_count
+  min_capacity       = var.web_min_count
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.web[0].name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"

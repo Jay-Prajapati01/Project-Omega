@@ -11,10 +11,30 @@ qdrant_url          = "https://your-cluster.cloud.qdrant.io"
 # setting this to true on the second Terraform apply.
 deploy_services       = false
 image_tag             = "prod"
-api_desired_count     = 2
-api_min_count         = 2
-api_max_count         = 6
+# ECS task sizing and autoscaling configurations
+# Tuned for AWS free-tier/trial account hard quota limit of 8 vCPUs (8192 CPU units).
+# Footprint breakdown under max scaling:
+# - API:    max 2 tasks * 512 CPU  = 1024 CPU units (1.0 vCPU)
+# - Web:    max 2 tasks * 512 CPU  = 1024 CPU units (1.0 vCPU)
+# - Worker: 1 task      * 1024 CPU = 1024 CPU units (1.0 vCPU)
+# Combined max autoscaling footprint: 3072 CPU units (3.0 vCPUs) <= 8192 units.
+# Even during 200% rolling deployment surge at max capacity:
+# API (4 * 512) + Web (4 * 512) + Worker (2 * 1024) = 6144 CPU units (6.0 vCPUs) <= 8192 units (8.0 vCPUs).
+api_desired_count     = 1
+api_min_count         = 1
+api_max_count         = 2
+api_cpu               = 512
+api_memory            = 1024
+
+web_desired_count     = 1
+web_min_count         = 1
+web_max_count         = 2
+web_cpu               = 512
+web_memory            = 1024
+
 worker_desired_count  = 1
+worker_cpu            = 1024
+worker_memory         = 2048
 llm_provider          = "groq"
 llm_model             = "openai/gpt-oss-20b"
 enable_groq_secondary = false

@@ -32,40 +32,77 @@ variable "image_tag" {
   default = "prod"
 }
 variable "api_desired_count" {
-  type    = number
-  default = 2
+  type        = number
+  default     = 1
+  description = "Desired number of API tasks."
 }
 variable "api_min_count" {
-  type    = number
-  default = 2
+  type        = number
+  default     = 1
+  description = "Minimum number of API tasks for autoscaling."
   validation {
-    condition     = var.api_min_count >= 2 && var.api_min_count <= var.api_max_count
-    error_message = "api_min_count must be at least 2 and no greater than api_max_count."
+    condition     = var.api_min_count >= 1 && var.api_min_count <= var.api_max_count
+    error_message = "api_min_count must be at least 1 and no greater than api_max_count."
   }
 }
 variable "api_max_count" {
-  type    = number
-  default = 6
+  type        = number
+  default     = 2
+  description = "Maximum number of API tasks for autoscaling."
+}
+variable "web_desired_count" {
+  type        = number
+  default     = 1
+  description = "Desired number of web tasks."
+}
+variable "web_min_count" {
+  type        = number
+  default     = 1
+  description = "Minimum number of web tasks for autoscaling."
+  validation {
+    condition     = var.web_min_count >= 1 && var.web_min_count <= var.web_max_count
+    error_message = "web_min_count must be at least 1 and no greater than web_max_count."
+  }
+}
+variable "web_max_count" {
+  type        = number
+  default     = 2
+  description = "Maximum number of web tasks for autoscaling."
 }
 variable "worker_desired_count" {
-  type    = number
-  default = 1
+  type        = number
+  default     = 1
+  description = "Desired number of worker tasks."
 }
 variable "api_cpu" {
-  type    = number
-  default = 1024
+  type        = number
+  default     = 512
+  description = "Fargate CPU units for API task (e.g. 512 or 1024)."
 }
 variable "api_memory" {
-  type    = number
-  default = 3072
+  type        = number
+  default     = 1024
+  description = "Fargate memory (MiB) for API task."
+}
+variable "web_cpu" {
+  type        = number
+  default     = 512
+  description = "Fargate CPU units for web task."
+}
+variable "web_memory" {
+  type        = number
+  default     = 1024
+  description = "Fargate memory (MiB) for web task."
 }
 variable "worker_cpu" {
-  type    = number
-  default = 2048
+  type        = number
+  default     = 1024
+  description = "Fargate CPU units for worker task (e.g. 1024)."
 }
 variable "worker_memory" {
-  type    = number
-  default = 8192
+  type        = number
+  default     = 2048
+  description = "Fargate memory (MiB) for worker task."
 }
 variable "worker_ephemeral_storage_gib" {
   type    = number

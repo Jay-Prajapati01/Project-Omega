@@ -54,6 +54,7 @@ admin-portal-test-credentials.md
 admin-portal-credentials.md
 infra/aws/backend.tf
 infra/gcp/backend.tf
+infra/aws/backend-secrets.json
 gha-creds-*.json
 
 # Android / Gradle

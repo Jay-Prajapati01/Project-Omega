@@ -145,8 +145,8 @@ resource "aws_ecs_task_definition" "web" {
   family                   = "${local.name}-web"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = 512
-  memory                   = 1024
+  cpu                      = var.web_cpu
+  memory                   = var.web_memory
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
   container_definitions = jsonencode([{
