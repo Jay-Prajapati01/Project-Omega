@@ -40,60 +40,57 @@ resource "aws_lb_target_group" "api" {
   }
 }
 
+locals {
+  enable_https = var.acm_certificate_arn != "" && !can(regex("replace-me", var.acm_certificate_arn))
+}
+
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
   default_action {
-    type = "redirect"
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
-    }
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.web.arn
   }
 }
 
 resource "aws_lb_listener" "https" {
+  count             = local.enable_https ? 1 : 0
   load_balancer_arn = aws_lb.main.arn
   port              = 443
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
   certificate_arn   = var.acm_certificate_arn
   default_action {
-    type = "fixed-response"
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "Not found"
-      status_code  = "404"
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "web" {
-  listener_arn = aws_lb_listener.https.arn
-  priority     = 10
-  action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.web.arn
-  }
-  condition {
-    host_header {
-      values = [var.web_domain]
-    }
   }
 }
 
 resource "aws_lb_listener_rule" "api" {
-  listener_arn = aws_lb_listener.https.arn
+  listener_arn = aws_lb_listener.http.arn
   priority     = 20
   action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.api.arn
   }
   condition {
-    host_header {
-      values = [var.api_domain]
+    path_pattern {
+      values = ["/api", "/api/*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "web" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 30
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.web.arn
+  }
+  condition {
+    path_pattern {
+      values = ["/*"]
     }
   }
 }

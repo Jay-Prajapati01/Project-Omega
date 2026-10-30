@@ -86,7 +86,7 @@ locals {
     { name = "APP_NAME", value = "MindMesh" },
     { name = "ENVIRONMENT", value = "production" },
     { name = "API_PREFIX", value = "/api" },
-    { name = "CORS_ORIGINS", value = local.web_origin },
+    { name = "CORS_ORIGINS", value = "${local.web_origin},http://${aws_lb.main.dns_name},https://${aws_lb.main.dns_name}" },
     { name = "MINDMESH_EXECUTION_MODE", value = "cloud" },
     { name = "AUTH_ENABLED", value = "true" },
     { name = "JOB_BACKEND", value = "postgres" },
